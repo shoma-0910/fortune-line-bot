@@ -1,26 +1,22 @@
-// index.js (Firebase Admin + サービスアカウント認証対応)
+// index.js
 const express = require("express");
 const bodyParser = require("body-parser");
 const axios = require("axios");
 const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const { readFile } = require("fs/promises");
-const admin = require("firebase-admin");
+const os = require("os");
+const { Storage } = require("@google-cloud/storage");
 require("dotenv").config();
-
-// Firebase Admin SDK 初期化（サービスアカウント鍵使用）
-const serviceAccount = require("./firebase-key.json");
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-});
-
-const bucket = admin.storage().bucket();
 
 const app = express();
 app.use(bodyParser.json());
+
+const storage = new Storage({
+  keyFilename: path.join(__dirname, "firebase-key.json"),
+});
+
+const bucketName = process.env.FIREBASE_STORAGE_BUCKET;
 
 async function getFortuneFromGPT() {
   for (let i = 0; i < 3; i++) {
@@ -32,8 +28,7 @@ async function getFortuneFromGPT() {
           messages: [
             {
               role: "user",
-              content:
-                "12星座すべての今日の恋愛運を、1星座あたり40文字以内で1行ずつ出力してください。",
+              content: "12星座すべての今日の恋愛運を、1星座あたり40文字以内で1行ずつ出力してください。",
             },
           ],
         },
@@ -65,13 +60,14 @@ app.post("/webhook", async (req, res) => {
     const replyToken = event.replyToken;
     try {
       const fortune = await getFortuneFromGPT();
-
       console.log("🎯 GPTからの占い文:", fortune);
 
-      const tempTextPath = path.join(__dirname, "temp_fortune.txt");
+      const tempTextPath = path.join(os.tmpdir(), "temp_fortune.txt");
       fs.writeFileSync(tempTextPath, fortune);
 
-      exec(`node generateVideo.js "${tempTextPath}"`, async (err, stdout, stderr) => {
+      const outputPath = path.join(os.tmpdir(), "output.mp4");
+
+      exec(`node generateVideo.js \"${tempTextPath}\" \"${outputPath}\"`, async (err, stdout, stderr) => {
         if (err) {
           console.error("❌ 動画生成エラー:", err.message);
           return;
@@ -79,18 +75,16 @@ app.post("/webhook", async (req, res) => {
 
         console.log("🎥 動画生成成功:", stdout);
 
-        const filePath = path.join(__dirname, "output", "output.mp4");
         const destination = `videos/${Date.now()}.mp4`;
-
-        await bucket.upload(filePath, {
+        await storage.bucket(bucketName).upload(outputPath, {
           destination,
           public: true,
           metadata: {
-            contentType: "video/mp4",
+            cacheControl: "public, max-age=31536000",
           },
         });
 
-        const videoURL = `https://storage.googleapis.com/${process.env.FIREBASE_STORAGE_BUCKET}/${destination}`;
+        const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
 
         await axios.post(
           "https://api.line.me/v2/bot/message/reply",
@@ -99,7 +93,7 @@ app.post("/webhook", async (req, res) => {
             messages: [
               {
                 type: "text",
-                text: `🎬 占い動画を生成しました！\n${videoURL}`,
+                text: `🎬 占い動画はこちら！\n${publicUrl}`,
               },
             ],
           },

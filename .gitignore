@@ -1,4 +1,4 @@
 .env
-*.json
 *.mp4
 node_modules
+firebase-key.json
