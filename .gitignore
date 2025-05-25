@@ -1,3 +1,4 @@
 .env
 *.json
 *.mp4
+node_modules/
