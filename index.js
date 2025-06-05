@@ -15,8 +15,16 @@ app.use(bodyParser.json());
 const storage = new Storage({
   keyFilename: path.join(__dirname, "firebase-key.json"),
 });
-
 const bucketName = process.env.FIREBASE_STORAGE_BUCKET;
+
+function execCommand(command) {
+  return new Promise((resolve, reject) => {
+    exec(command, (err, stdout, stderr) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+  });
+}
 
 async function getFortuneFromGPT() {
   for (let i = 0; i < 3; i++) {
@@ -42,10 +50,9 @@ async function getFortuneFromGPT() {
       return res.data.choices[0].message.content.trim();
     } catch (err) {
       if (err.response?.status === 429) {
-        console.log("⚠️ レート制限。2秒後に再試行...");
+        console.log("⚠️ レート制限、リトライします...");
         await new Promise((r) => setTimeout(r, 2000));
       } else {
-        console.error("❌ GPTエラー:", err.message);
         throw err;
       }
     }
@@ -58,55 +65,69 @@ app.post("/webhook", async (req, res) => {
 
   if (event?.type === "message" && event.message.text === "今日の運勢") {
     const replyToken = event.replyToken;
+
     try {
       const fortune = await getFortuneFromGPT();
-      console.log("🎯 GPTからの占い文:", fortune);
+      console.log("🎯 GPT占い文:", fortune);
 
-      const tempTextPath = path.join(os.tmpdir(), "temp_fortune.txt");
+      const tempTextPath = path.join(os.tmpdir(), `fortune_${Date.now()}.txt`);
+      const outputPath = path.join(os.tmpdir(), `output_${Date.now()}.mp4`);
       fs.writeFileSync(tempTextPath, fortune);
 
-      const outputPath = path.join(os.tmpdir(), "output.mp4");
+      await execCommand(`node generateVideo.js "${tempTextPath}" "${outputPath}"`);
+      console.log("🎥 動画生成成功");
 
-      exec(`node generateVideo.js \"${tempTextPath}\" \"${outputPath}\"`, async (err, stdout, stderr) => {
-        if (err) {
-          console.error("❌ 動画生成エラー:", err.message);
-          return;
-        }
-
-        console.log("🎥 動画生成成功:", stdout);
-
-        const destination = `videos/${Date.now()}.mp4`;
-        await storage.bucket(bucketName).upload(outputPath, {
-          destination,
-          public: true,
-          metadata: {
-            cacheControl: "public, max-age=31536000",
-          },
-        });
-
-        const publicUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
-
-        await axios.post(
-          "https://api.line.me/v2/bot/message/reply",
-          {
-            replyToken,
-            messages: [
-              {
-                type: "text",
-                text: `🎬 占い動画はこちら！\n${publicUrl}`,
-              },
-            ],
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.LINE_ACCESS_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+      const destination = `videos/${Date.now()}.mp4`;
+      await storage.bucket(bucketName).upload(outputPath, {
+        destination,
+        public: true,
+        metadata: {
+          cacheControl: "public, max-age=31536000",
+        },
       });
+
+      const videoUrl = `https://storage.googleapis.com/${bucketName}/${destination}`;
+
+      await axios.post(
+        "https://api.line.me/v2/bot/message/reply",
+        {
+          replyToken,
+          messages: [
+            {
+              type: "video",
+              originalContentUrl: videoUrl,
+              previewImageUrl: "https://dummyimage.com/640x360/000/fff.png&text=占い動画", // 任意
+            },
+          ],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.LINE_ACCESS_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
     } catch (err) {
-      console.error("❌ 全体エラー:", err.message);
+      console.error("❌ エラー:", err.message);
+      await axios.post(
+        "https://api.line.me/v2/bot/message/reply",
+        {
+          replyToken,
+          messages: [
+            {
+              type: "text",
+              text: "動画の生成に失敗しました…💦",
+            },
+          ],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.LINE_ACCESS_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
     }
   }
 
@@ -114,4 +135,6 @@ app.post("/webhook", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
