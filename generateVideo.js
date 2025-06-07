@@ -2,43 +2,36 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 
-// 引数チェック
-const args = process.argv.slice(2);
-const inputPath = args[0];
-const outputPath = args[1];
+// 入力・出力パスを取得
+const inputPath = process.argv[2];
+const outputPath = process.argv[3];
 
-if (!inputPath || !outputPath) {
-  console.error("❌ 引数エラー: inputPath と outputPath を指定してください");
-  process.exit(1);
+const tmpDir = path.dirname(outputPath);
+if (!fs.existsSync(tmpDir)) {
+  fs.mkdirSync(tmpDir, { recursive: true });
 }
 
-// 出力ディレクトリが存在しない場合は作成
-const outputDir = path.dirname(outputPath);
-if (!fs.existsSync(outputDir)) {
-  fs.mkdirSync(outputDir, { recursive: true });
-}
+// 占い文を1行ずつ読み込む
+const lines = fs.readFileSync(inputPath, "utf-8").split("\n");
 
-try {
-  const text = fs.readFileSync(inputPath, "utf-8");
+// 使用フォント（Render や Linux で使えるパス）
+const fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 
-  // テキスト内の特殊文字をエスケープ
-  const safeText = text
-    .replace(/'/g, "\\'")       // シングルクォート
-    .replace(/"/g, '\\"')       // ダブルクォート
-    .replace(/\n/g, '\\n');     // 改行
+// 1行ずつ画像を生成
+const imagePaths = [];
+lines.forEach((line, index) => {
+  const imagePath = path.join(tmpDir, `line_${index + 1}.png`);
+  const safeText = line.replace(/'/g, "\\'");
+  const ffmpegCmd = `ffmpeg -f lavfi -i color=c=black:s=1280x720:d=3 -vf "drawtext=fontfile='${fontPath}':fontsize=40:fontcolor=white:x=50:y=360:text='${safeText}'" -y ${imagePath}`;
+  execSync(ffmpegCmd);
+  imagePaths.push(imagePath);
+});
 
-  // 使用フォントのパス（Render環境で有効なものに修正が必要な場合あり）
-  const fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+// 画像を動画として結合
+const concatListPath = path.join(tmpDir, "images.txt");
+fs.writeFileSync(concatListPath, imagePaths.map(p => `file '${p}'`).join("\n"));
 
-  // FFmpeg コマンド
-  const command = `ffmpeg -f lavfi -i color=c=black:s=1280x720:d=10 -vf "drawtext=fontfile='${fontPath}':fontsize=30:fontcolor=white:x=50:y=50:text='${safeText}'" -y ${outputPath}`;
+const concatCmd = `ffmpeg -f concat -safe 0 -i ${concatListPath} -vsync vfr -pix_fmt yuv420p -y ${outputPath}`;
+execSync(concatCmd);
 
-  console.log("📽️ 実行コマンド:", command);
-  execSync(command, { stdio: "inherit" });
-
-  console.log(`🎞️ 動画生成完了: ${outputPath}`);
-} catch (err) {
-  console.error("❌ generateVideo.js エラー:", err.message);
-  console.error(err.stack);
-  process.exit(1);
-}
+console.log("🎞️ 動画生成完了:", outputPath);
