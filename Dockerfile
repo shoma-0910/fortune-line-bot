@@ -1,23 +1,22 @@
-# Node.js + ffmpeg が入っている環境をベースにする
-FROM node:18-slim
 
-# ffmpegや日本語フォントをインストール
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    fonts-noto-cjk \
- && rm -rf /var/lib/apt/lists/*
+FROM node:18
 
-# 作業ディレクトリを作成
+# ffmpeg + 日本語フォントをインストール
+RUN apt-get update && \
+    apt-get install -y ffmpeg fonts-noto-cjk && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 作業ディレクトリ
 WORKDIR /app
 
-# ローカルのファイルを全部コンテナ内へコピー
-COPY . .
-
-# 依存関係をインストール
+# パッケージをコピーしてインストール
+COPY package*.json ./
 RUN npm install
 
-# 環境変数が必要ならここで受け取れるようにしておく
-ENV PORT=3000
+# ファイルをコピー
+COPY . .
 
-# アプリの起動コマンド
+# ポートと起動
+EXPOSE 3000
 CMD ["node", "index.js"]
+
