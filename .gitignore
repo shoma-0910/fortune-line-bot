@@ -2,3 +2,4 @@
 *.mp4
 node_modules
 firebase-key.json
+.env.example
