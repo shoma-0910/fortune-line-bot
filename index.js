@@ -1,4 +1,3 @@
-// index.js
 const express = require("express");
 const bodyParser = require("body-parser");
 const axios = require("axios");
@@ -12,16 +11,24 @@ require("dotenv").config();
 const app = express();
 app.use(bodyParser.json());
 
+// Firebaseキーを環境変数から取得してJSONとしてパース
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY_JSON);
+
+// ストレージ設定（firebase-key.jsonではなく、credentialsとして渡す）
 const storage = new Storage({
-  keyFilename: path.join(__dirname, "firebase-key.json"),
+  credentials: serviceAccount,
 });
 const bucketName = process.env.FIREBASE_STORAGE_BUCKET;
 
 function execCommand(command) {
   return new Promise((resolve, reject) => {
     exec(command, (err, stdout, stderr) => {
-      if (err) reject(err);
-      else resolve(stdout);
+      if (err) {
+        console.error("❌ コマンド実行エラー:", stderr || err.message);
+        reject(err);
+      } else {
+        resolve(stdout);
+      }
     });
   });
 }
@@ -62,9 +69,7 @@ async function getFortuneFromGPT() {
 
 app.post("/webhook", async (req, res) => {
   const event = req.body.events?.[0];
-
-  // 先にレスポンス返してLINEのタイムアウトを防ぐ
-  res.sendStatus(200);
+  res.sendStatus(200); // LINEに即時200返却
 
   if (event?.type === "message" && event.message.text === "今日の運勢") {
     const replyToken = event.replyToken;
@@ -72,14 +77,15 @@ app.post("/webhook", async (req, res) => {
       const fortune = await getFortuneFromGPT();
       console.log("🎯 GPT占い文:", fortune);
 
-      const tempTextPath = path.join(os.tmpdir(), `fortune_${Date.now()}.txt`);
-      const outputPath = path.join(os.tmpdir(), `output_${Date.now()}.mp4`);
+      const timestamp = Date.now();
+      const tempTextPath = path.join(os.tmpdir(), `fortune_${timestamp}.txt`);
+      const outputPath = path.join(os.tmpdir(), `output_${timestamp}.mp4`);
       fs.writeFileSync(tempTextPath, fortune);
 
       await execCommand(`node generateVideo.js "${tempTextPath}" "${outputPath}"`);
       console.log("🎥 動画生成成功");
 
-      const destination = `videos/${Date.now()}.mp4`;
+      const destination = `videos/${timestamp}.mp4`;
       await storage.bucket(bucketName).upload(outputPath, {
         destination,
         public: true,
@@ -109,7 +115,7 @@ app.post("/webhook", async (req, res) => {
         }
       );
     } catch (err) {
-      console.error("❌ エラー:", err.message);
+      console.error("❌ 全体エラー:", err.message);
       await axios.post(
         "https://api.line.me/v2/bot/message/reply",
         {
