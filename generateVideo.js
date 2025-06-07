@@ -1,38 +1,26 @@
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 const { execSync } = require("child_process");
 
-const inputPath = process.argv[2];
-const outputPath = process.argv[3];
+// 占いテキストファイルのパスを受け取る
+const args = process.argv.slice(2);
+const inputPath = args[0];
+const outputPath = args[1];
 
-const tmpDir = os.tmpdir();
+// フォントパス（RenderやDockerで使える日本語対応フォント）
 const fontPath = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf";
 
 try {
-  const text = fs.readFileSync(inputPath, "utf-8").trim();
-  const lines = text.split("\n");
+  const text = fs.readFileSync(inputPath, "utf-8");
 
-  const imageList = [];
+  // 🎥 ffmpeg コマンドを文字列に直接埋め込む（textfile は使わない）
+  const ffmpegCmd = `ffmpeg -f lavfi -i color=c=black:s=1280x720:d=3 -vf "drawtext=fontfile='${fontPath}':fontsize=40:fontcolor=white:x=50:y=360:text='${text.replace(/\n/g, '\\n').replace(/'/g, "\\'")}'" -y ${outputPath}`;
 
-  lines.forEach((line, index) => {
-    const textFile = path.join(tmpDir, `text_${index + 1}.txt`);
-    fs.writeFileSync(textFile, line);
+  console.log("実行コマンド:", ffmpegCmd); // ←デバッグ用に出力
 
-    const imagePath = path.join(tmpDir, `line_${index + 1}.png`);
-    const ffmpegCmd = `ffmpeg -f lavfi -i color=c=black:s=1280x720:d=3 -vf drawtext=fontfile='${fontPath}':fontsize=40:fontcolor=white:x=50:y=360:textfile='${textFile}' -y ${imagePath}`;
+  execSync(ffmpegCmd, { stdio: "inherit" });
 
-    execSync(ffmpegCmd, { stdio: "inherit" });
-    imageList.push(`file '${imagePath}'`);
-  });
-
-  const concatListPath = path.join(tmpDir, "images.txt");
-  fs.writeFileSync(concatListPath, imageList.join("\n"));
-
-  const concatCmd = `ffmpeg -f concat -safe 0 -i ${concatListPath} -vsync vfr -pix_fmt yuv420p -y ${outputPath}`;
-  execSync(concatCmd, { stdio: "inherit" });
-
-  console.log("🎞️ 動画生成完了:", outputPath);
+  console.log(`🎞️ 動画生成完了: ${outputPath}`);
 } catch (err) {
   console.error("❌ generateVideo.js エラー:", err);
   process.exit(1);
