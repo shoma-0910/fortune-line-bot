@@ -1,5 +1,18 @@
 const fs = require("fs");
 const path = require("path");
+
+const outputPath = process.argv[3];
+
+const outputDir = path.dirname(outputPath);
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir, { recursive: true });
+}
+
+
+
+
+const fs = require("fs");
+const path = require("path");
 const { execSync } = require("child_process");
 
 // 占いテキストファイルのパスを受け取る
