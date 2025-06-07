@@ -1,22 +1,25 @@
-
 FROM node:18
 
-# ffmpeg + 日本語フォントをインストール
+# ffmpeg + 日本語フォント（Noto Sans CJK）をインストール
 RUN apt-get update && \
-    apt-get install -y ffmpeg fonts-noto-cjk && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends \
+    ffmpeg \
+    fonts-noto-cjk && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# 作業ディレクトリ
+# 作業ディレクトリ作成
 WORKDIR /app
 
-# パッケージをコピーしてインストール
+# パッケージ関連コピーしてインストール
 COPY package*.json ./
 RUN npm install
 
-# ファイルをコピー
+# プロジェクトファイルをコピー
 COPY . .
 
-# ポートと起動
+# ポートを公開
 EXPOSE 3000
-CMD ["node", "index.js"]
 
+# アプリを起動
+CMD ["node", "index.js"]
