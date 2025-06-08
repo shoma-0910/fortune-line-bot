@@ -36,9 +36,7 @@ app.use(bodyParser.json());
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY_JSON);
 
 // ストレージ設定（firebase-key.jsonではなく、credentialsとして渡す）
-const storage = new Storage({
-  credentials: serviceAccount,
-});
+const storage = new Storage(); 
 const bucketName = process.env.FIREBASE_STORAGE_BUCKET;
 
 function execCommand(command) {

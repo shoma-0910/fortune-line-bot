@@ -13,3 +13,5 @@ COPY . .
 
 EXPOSE 3000
 CMD ["node", "index.js"]
+
+COPY firebase-key.json .
