@@ -8,35 +8,32 @@ const os = require("os");
 const { Storage } = require("@google-cloud/storage");
 require("dotenv").config();
 
-const fs = require("fs");
-const path = require("path");
-require("dotenv").config();
-
-fs.writeFileSync(
-    path.join(__dirname, "firebase-key.json"),
-    JSON.stringify({
-      type: "service_account",
-      project_id: process.env.GOOGLE_PROJECT_ID,
-      private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
-      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-      client_email: process.env.GOOGLE_CLIENT_EMAIL,
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      auth_uri: "https://accounts.google.com/o/oauth2/auth",
-      token_uri: "https://oauth2.googleapis.com/token",
-      auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-      client_x509_cert_url: process.env.GOOGLE_CLIENT_X509_CERT_URL,
-    })
-  );
-  
-
 const app = express();
 app.use(bodyParser.json());
 
-// Firebaseキーを環境変数から取得してJSONとしてパース
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY_JSON);
+/**
+ * firebase-key.json を起動時に書き出す（Render環境変数で渡す場合）
+ */
+if (!fs.existsSync(path.join(__dirname, "firebase-key.json"))) {
+  const firebaseKey = {
+    type: "service_account",
+    project_id: process.env.GOOGLE_PROJECT_ID,
+    private_key_id: process.env.GOOGLE_PRIVATE_KEY_ID,
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    auth_uri: "https://accounts.google.com/o/oauth2/auth",
+    token_uri: "https://oauth2.googleapis.com/token",
+    auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+    client_x509_cert_url: process.env.GOOGLE_CLIENT_X509_CERT_URL,
+  };
+  fs.writeFileSync(path.join(__dirname, "firebase-key.json"), JSON.stringify(firebaseKey));
+}
 
-// ストレージ設定（firebase-key.jsonではなく、credentialsとして渡す）
-const storage = new Storage(); 
+// Google Cloud Storage 初期化
+const storage = new Storage({
+  keyFilename: path.join(__dirname, "firebase-key.json"),
+});
 const bucketName = process.env.FIREBASE_STORAGE_BUCKET;
 
 function execCommand(command) {
